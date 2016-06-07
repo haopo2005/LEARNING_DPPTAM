@@ -308,7 +308,7 @@ void semidense_tracking(Imagenes *images,SemiDenseMapping *semidense_mapper,\
 
             cv::Mat image_frame_aux  = (*semidense_tracker->image_frame).clone();
             double stamps_aux = *semidense_tracker->stamps;
-             ros::Time stamps_ros= *semidense_tracker->stamps_ros;
+            ros::Time stamps_ros= *semidense_tracker->stamps_ros;
 
             semidense_tracker->last_cont_frames = *semidense_tracker->cont_frames;
             prepare_image(image_frame_aux,semidense_tracker->image_rgb,semidense_tracker->image_to_track,\
@@ -473,6 +473,7 @@ void semidense_tracking(Imagenes *images,SemiDenseMapping *semidense_mapper,\
                      points3D_cam_show.push_back(points3D_superpixels);
                      points3D_cam_show = points3D_cam_show.t();
                  }
+				 //painting current frame and the reprojection of the 3D map
                  show_error1( points3D_cam_show,image2print,image_frame_aux,num_pixels_sd2project, pub_image,semidense_tracker->weight[semidense_tracker->pyramid_levels-1]);
              }
 
@@ -1431,11 +1432,10 @@ void compute_error( cv::Mat &points3D_cam, cv::Mat image, cv::Mat &color, cv::Ma
 
            double r2 = c1*(y_3-y_2) + c2*(y_2-y_1);
 
-           double r = r1*(x_3-x_2) +  r2*(x_2-x_1);
+           double r = r1*(x_3-x_2) +  r2*(x_2-x_1);  //插值后
 
 
-           double error_to_add  =   (r -  color.at<double>(k,0));
-
+           double error_to_add  =   (r -  color.at<double>(k,0));//同compute_error_ic不一样
            error_vector_sqrt.at<double>(k,0) = error_to_add;
            error_check.push_back(error_to_add);
         }
@@ -1655,7 +1655,7 @@ if (initial_iteration <0.5)
             }
             jacobian1k = jacobian_analitic.clone();
 
-            init = (jacobian.t()*jacobian).inv(cv::DECOMP_SVD)*jacobian.t();
+            init = (jacobian.t()*jacobian).inv(cv::DECOMP_SVD)*jacobian.t(); //iter=-(JtWJ)^-1JtWr
 
     }
     else
@@ -1703,7 +1703,7 @@ v.at<double>(2,0) =- init2.at<double>(5,0);
 
 
 
-exp_SE3 (R1,t1,w,v);
+exp_SE3 (R1,t1,w,v);//T=exp[se3](iter),  lie group
 
 cv::Mat S,U,V;
 cv::SVD::compute(R1,S,U,V,cv::SVD::FULL_UV);
@@ -2086,6 +2086,7 @@ void print_poses(cv::Mat &points, char buffer[])
  }
 
 
+//将last keyframe中的point与global frame中的point比较，只保留新的成分，避免二次跟踪
 void join_maps(vector<cv::Mat> &points_map,cv::Mat R,cv::Mat t,vector<cv::Mat> point_clouds,int pyramid_levels,\
                 vector<double> &focalx, vector<double> &focaly, vector<double> &centerx, vector<double> &centery,   \
               vector<cv::Mat> &image_keyframe_pyramid, float  &points_projected_in_image)
@@ -2119,7 +2120,7 @@ void join_maps(vector<cv::Mat> &points_map,cv::Mat R,cv::Mat t,vector<cv::Mat> p
 
         cv::Mat points_joined(0,7,CV_64FC1);
         cv::Mat points_joined_previous_map(0,7,CV_64FC1);
-        cv::Mat pointsClouds3Dmap_cam;
+        cv::Mat pointsClouds3Dmap_cam;   //成像平面三维点的坐标集合
 
 
 
@@ -2131,7 +2132,7 @@ void join_maps(vector<cv::Mat> &points_map,cv::Mat R,cv::Mat t,vector<cv::Mat> p
 
 
 
-        cv::Mat pointsClouds3D =  point_clouds[i].t();
+        cv::Mat pointsClouds3D =  point_clouds[i].t();  //此处pointsClouds3D包含了global frame的points_map和last key frame 中的 point_clouds
         pointsClouds3D = pointsClouds3D.rowRange(0,3);
 
         transformed_points(pointsClouds3Dmap_cam, R,   t,   focalx[i],focaly[i],centerx[i],centery[i],image_keyframe_pyramid[i], pointsClouds3D   );
@@ -2152,8 +2153,9 @@ void join_maps(vector<cv::Mat> &points_map,cv::Mat R,cv::Mat t,vector<cv::Mat> p
 
         double min, max;
         cv::minMaxLoc(pointsClouds3Dmap_cam, &min, &max);
-
-        compute_error( pointsClouds3Dmap_cam,image_keyframe_pyramid[i], color[i],error_vector,variance,error_vector_sqrt,error_check,weight);
+		//将投影前颜色与投影后的插值颜色做差，global frame point也投影，因为凡是不同镜头的相似画面，其颜色应该是一致的
+		//只要投影后的点，还在当前画面内
+		compute_error( pointsClouds3Dmap_cam,image_keyframe_pyramid[i], color[i],error_vector,variance,error_vector_sqrt,error_check,weight);
 
 
         cont2 = 0;
